@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大工スケジュール管理アプリ</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #4a6da7;
+            --secondary-color: #8da9c4;
+            --accent-color: #ff6b6b;
+            --background-color: #f5f7fa;
+            --text-color: #333;
+            --border-color: #ddd;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--background-color);
+            color: var(--text-color);
+        }
+
+        .container {
+            width: 95%;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 20px;
+        }
+
+        h1, h2 {
+            margin: 0;
+            color: var(--primary-color);
+        }
+
+        .view-toggle {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .view-toggle button {
+            padding: 8px 16px;
+            background-color: var(--secondary-color);
+            border: none;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .view-toggle button.active {
+            background-color: var(--primary-color);
+        }
+
+        .schedule-container {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+            overflow-x: auto;
+        }
+
+        .schedule-sidebar {
+            background-color: white;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 10px;
+        }
+
+        .schedule-item {
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 8px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            cursor: move;
+        }
+
+        .schedule-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+            background-color: white;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 10px;
+            min-height: 500px;
+            overflow-x: auto;
+        }
+
+        .grid-header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 8px;
+            text-align: center;
+            border-radius: 4px 4px 0 0;
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+        }
+
+        .grid-day {
+            display: flex;
+            flex-direction: column;
+            min-height: 500px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+        }
+
+        .grid-cell {
+            min-height: 100px;
+            border-top: 1px solid var(--border-color);
+            padding: 5px;
+        }
+
+        .assigned-task {
+            background-color: var(--accent-color);
+            color: white;
+            padding: 8px;
+            margin-bottom: 5px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .buffer {
+            background-color: #a8e6cf;
+            opacity: 0.7;
+        }
+
+        .file-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            background-color: var(--primary-color);
+            border: none;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .btn:hover {
+            background-color: #3a5a8f;
+        }
+
+        .data-input {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: white;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .summary {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: white;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        #efficiency-meter {
+            width: 100%;
+            height: 20px;
+            background-color: #e0e0e0;
+            border-radius: 10px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+
+        #efficiency-value {
+            height: 100%;
+            background-color: var(--primary-color);
+            width: 0%;
+            transition: width 0.5s;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>大工スケジュール管理</h1>
+            <div class="file-controls">
+                <button id="saveBtn" class="btn">保存</button>
+                <button id="loadBtn" class="btn">読み込み</button>
+                <input type="file" id="csvFile" accept=".csv" style="display: none;">
+                <button id="importCsvBtn" class="btn">CSVインポート</button>
+            </div>
+        </header>
+
+        <div class="view-toggle">
+            <button id="workerViewBtn" class="active">大工視点</button>
+            <button id="houseViewBtn">家視点</button>
+        </div>
+
+        <div class="data-input">
+            <h2>データ設定</h2>
+            <div class="input-group">
+                <label for="startDate">開始日:</label>
+                <input type="date" id="startDate">
+            </div>
+            <div class="input-group">
+                <label for="endDate">終了日:</label>
+                <input type="date" id="endDate">
+            </div>
+            <div class="input-group">
+                <label for="workerCount">大工の人数:</label>
+                <input type="number" id="workerCount" min="1" value="5">
+            </div>
+            <div class="input-group">
+                <label for="houseCount">家の数:</label>
+                <input type="number" id="houseCount" min="1" value="3">
+            </div>
+            <button id="generateBtn" class="btn">スケジュール生成</button>
+            <button id="optimizeBtn" class="btn">効率最適化</button>
+        </div>
+
+        <div id="workerView">
+            <h2>大工視点スケジュール</h2>
+            <div class="schedule-container" id="workerSchedule">
+                <!-- スケジュールがここに生成されます -->
+            </div>
+        </div>
+
+        <div id="houseView" class="hidden">
+            <h2>家視点スケジュール</h2>
+            <div class="schedule-container" id="houseSchedule">
+                <!-- スケジュールがここに生成されます -->
+            </div>
+        </div>
+
+        <div class="summary">
+            <h2>スケジュール概要</h2>
+            <div id="summary-content">
+                <p>大工の稼働率: <span id="worker-utilization">0%</span></p>
+                <p>完成予定: 計算中...</p>
+                <p>効率スコア:</p>
+                <div id="efficiency-meter">
+                    <div id="efficiency-value"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // アプリケーションのメインコード
+        document.addEventListener('DOMContentLoaded', function() {
+            // アプリケーションの状態管理
+            const appState = {
+                startDate: null,
+                endDate: null,
+                workers: [],
+                houses: [],
+                tasks: [],
+                assignments: [],
+                currentView: 'worker'
+            };
+
+            // DOM要素の参照
+            const elements = {
+                startDate: document.getElementById('startDate'),
+                endDate: document.getElementById('endDate'),
+                workerCount: document.getElementById('workerCount'),
+                houseCount: document.getElementById('houseCount'),
+                generateBtn: document.getElementById('generateBtn'),
+                optimizeBtn: document.getElementById('optimizeBtn'),
+                saveBtn: document.getElementById('saveBtn'),
+                loadBtn: document.getElementById('loadBtn'),
+                importCsvBtn: document.getElementById('importCsvBtn'),
+                csvFile: document.getElementById('csvFile'),
+                workerViewBtn: document.getElementById('workerViewBtn'),
+                houseViewBtn: document.getElementById('houseViewBtn'),
+                workerView: document.getElementById('workerView'),
+                houseView: document.getElementById('houseView'),
+                workerSchedule: document.getElementById('workerSchedule'),
+                houseSchedule: document.getElementById('houseSchedule'),
+                workerUtilization: document.getElementById('worker-utilization'),
+                efficiencyValue: document.getElementById('efficiency-value')
+            };
+
+            // 現在の日付を設定
+            const today = new Date();
+            elements.startDate.value = today.toISOString().split('T')[0];
+            
+            const oneMonthLater = new Date(today);
+            oneMonthLater.setMonth(today.getMonth() + 1);
+            elements.endDate.value = oneMonthLater.toISOString().split('T')[0];
+
+            // イベントリスナーを設定
+            elements.generateBtn.addEventListener('click', generateSchedule);
+            elements.optimizeBtn.addEventListener('click', optimizeSchedule);
+            elements.saveBtn.addEventListener('click', saveAppState);
+            elements.loadBtn.addEventListener('click', loadAppState);
+            elements.importCsvBtn.addEventListener('click', () => elements.csvFile.click());
+            elements.csvFile.addEventListener('change', importCsv);
+            elements.workerViewBtn.addEventListener('click', () => switchView('worker'));
+            elements.houseViewBtn.addEventListener('click', () => switchView('house'));
+
+            // スケジュール生成関数
+            function generateSchedule() {
+                appState.startDate = new Date(elements.startDate.value);
+                appState.endDate = new Date(elements.endDate.value);
+                
+                const workerCount = parseInt(elements.workerCount.value);
+                const houseCount = parseInt(elements.houseCount.value);
+                
+                // ワーカーデータを生成
+                appState.workers = [];
+                for (let i = 1; i <= workerCount; i++) {
+                    appState.workers.push({
+                        id: `worker-${i}`,
+                        name: `大工 ${i}`,
+                        skills: ['carpentry', 'general']
+                    });
+                }
+                
+                // 家データを生成
+                appState.houses = [];
+                for (let i = 1; i <= houseCount; i++) {
+                    appState.houses.push({
+                        id: `house-${i}`,
+                        name: `家 ${i}`,
+                        status: 'in-progress'
+                    });
+                }
+                
+                // 基本タスクを生成
+                appState.tasks = [];
+                appState.houses.forEach(house => {
+                    appState.tasks.push({
+                        id: `task-${house.id}-foundation`,
+                        houseId: house.id,
+                        name: '基礎工事',
+                        duration: 3, // 日数
+                        requiredSkills: ['general'],
+                        dependencies: []
+                    });
+                    
+                    appState.tasks.push({
+                        id: `task-${house.id}-frame`,
+                        houseId: house.id,
+                        name: '骨組み',
+                        duration: 5,
+                        requiredSkills: ['carpentry'],
+                        dependencies: [`task-${house.id}-foundation`]
+                    });
+                    
+                    appState.tasks.push({
+                        id: `task-${house.id}-interior`,
+                        houseId: house.id,
+                        name: '内装',
+                        duration: 7,
+                        requiredSkills: ['carpentry'],
+                        dependencies: [`task-${house.id}-frame`]
+                    });
+                    
+                    appState.tasks.push({
+                        id: `task-${house.id}-finishing`,
+                        houseId: house.id,
+                        name: '仕上げ',
+                        duration: 4,
+                        requiredSkills: ['general'],
+                        dependencies: [`task-${house.id}-interior`]
+                    });
+                });
+                
+                // 初期の割り当てをクリア
+                appState.assignments = [];
+                
+                // 適当なスケジュールを生成（最適化前）
+                let currentDate = new Date(appState.startDate);
+                let workerIndex = 0;
+                
+                appState.tasks.forEach(task => {
+                    if (task.dependencies.length === 0) {  // 依存関係のないタスクから開始
+                        const worker = appState.workers[workerIndex];
+                        
+                        for (let day = 0; day < task.duration; day++) {
+                            const assignmentDate = new Date(currentDate);
+                            assignmentDate.setDate(currentDate.getDate() + day);
+                            
+                            if (assignmentDate <= appState.endDate) {
+                                appState.assignments.push({
+                                    workerId: worker.id,
+                                    taskId: task.id,
+                                    date: new Date(assignmentDate),
+                                    houseId: task.houseId
+                                });
+                            }
+                        }
+                        
+                        workerIndex = (workerIndex + 1) % appState.workers.length;
+                        currentDate.setDate(currentDate.getDate() + task.duration + 1); // 1日のバッファ
+                    }
+                });
+                
+                // スケジュールを表示
+                renderSchedule();
+                updateSummary();
+            }
+
+            // 効率最適化関数
+            function optimizeSchedule() {
+                if (appState.tasks.length === 0 || appState.workers.length === 0) {
+                    alert('先にスケジュールを生成してください');
+                    return;
+                }
+                
+                // 依存関係を考慮したシンプルな最適化
+                appState.assignments = [];
+                const pendingTasks = [...appState.tasks];
+                const completedTasks = [];
+                const workerAssignments = {};
+                
+                // 各ワーカーの割り当て終了日を追跡
+                appState.workers.forEach(worker => {
+                    workerAssignments[worker.id] = new Date(appState.startDate);
+                });
+                
+                // タスクの依存関係を考慮した割り当て
+                while (pendingTasks.length > 0) {
+                    const availableTasks = pendingTasks.filter(task => {
+                        return task.dependencies.every(depId => {
+                            return completedTasks.some(ct => ct.id === depId);
+                        });
+                    });
+                    
+                    if (availableTasks.length === 0) break;
+                    
+                    // 各利用可能なタスクを割り当て
+                    for (const task of availableTasks) {
+                        // 最も早く利用可能なワーカーを見つける
+                        let earliestWorker = null;
+                        let earliestDate = new Date(9999, 11, 31);
+                        
+                        for (const worker of appState.workers) {
+                            const workerEndDate = workerAssignments[worker.id];
+                            
+                            if (workerEndDate < earliestDate && 
+                                worker.skills.some(skill => task.requiredSkills.includes(skill))) {
+                                earliestWorker = worker;
+                                earliestDate = new Date(workerEndDate);
+                            }
+                        }
+                        
+                        if (earliestWorker) {
+                            const startDate = new Date(workerAssignments[earliestWorker.id]);
+                            
+                            // タスクをスケジュールに追加
+                            for (let day = 0; day < task.duration; day++) {
+                                const assignmentDate = new Date(startDate);
+                                assignmentDate.setDate(startDate.getDate() + day);
+                                
+                                if (assignmentDate <= appState.endDate) {
+                                    appState.assignments.push({
+                                        workerId: earliestWorker.id,
+                                        taskId: task.id,
+                                        date: new Date(assignmentDate),
+                                        houseId: task.houseId
+                                    });
+                                }
+                            }
+                            
+                            // ワーカーの次の利用可能日を更新（1日のバッファを追加）
+                            const endDate = new Date(startDate);
+                            endDate.setDate(startDate.getDate() + task.duration + 1);
+                            workerAssignments[earliestWorker.id] = endDate;
+                            
+                            // タスクを完了としてマーク
+                            const taskIndex = pendingTasks.findIndex(t => t.id === task.id);
+                            const [completedTask] = pendingTasks.splice(taskIndex, 1);
+                            completedTasks.push(completedTask);
+                        }
+                    }
+                }
+                
+                // スケジュールを更新して表示
+                renderSchedule();
+                updateSummary();
+                updateEfficiencyMeter(80); // 最適化後の効率スコアを設定（例: 80%）
+            }
+
+            // スケジュール表示関数
+            function renderSchedule() {
+                renderWorkerView();
+                renderHouseView();
+                setupDragAndDrop();
+            }
+
+            // 大工視点のスケジュール表示
+            function renderWorkerView() {
+                elements.workerSchedule.innerHTML = '';
+                
+                // サイドバーを作成（未割り当てのタスク用）
+                const sidebar = document.createElement('div');
+                sidebar.className = 'schedule-sidebar';
+                sidebar.innerHTML = '<h3>未割り当てタスク</h3>';
+                
+                // 未割り当てのタスクを見つける
+                const assignedTaskIds = appState.assignments.map(a => a.taskId);
+                const unassignedTasks = appState.tasks.filter(task => 
+                    !assignedTaskIds.includes(task.id) ||
+                    assignedTaskIds.filter(id => id === task.id).length < task.duration
+                );
+                
+                unassignedTasks.forEach(task => {
+                    const house = appState.houses.find(h => h.id === task.houseId);
+                    const taskElement = document.createElement('div');
+                    taskElement.className = 'schedule-item';
+                    taskElement.setAttribute('data-task-id', task.id);
+                    taskElement.setAttribute('data-house-id', task.houseId);
+                    taskElement.setAttribute('data-duration', task.duration);
+                    taskElement.textContent = `${house.name}: ${task.name} (${task.duration}日)`;
+                    sidebar.appendChild(taskElement);
+                });
+                
+                elements.workerSchedule.appendChild(sidebar);
+                
+                // グリッドを作成
+                const grid = document.createElement('div');
+                grid.className = 'schedule-grid';
+                
+                // 日付範囲を計算
+                const dateRange = getDateRange();
+                
+                // 各ワーカーの行を作成
+                appState.workers.forEach(worker => {
+                    dateRange.forEach(date => {
+                        // 各日のセルを作成
+                        const dateStr = date.toISOString().split('T')[0];
+                        const cell = document.createElement('div');
+                        cell.className = 'grid-cell';
+                        cell.setAttribute('data-worker-id', worker.id);
+                        cell.setAttribute('data-date', dateStr);
+                        
+                        // このセルに割り当てられたタスクを見つける
+                        const cellAssignments = appState.assignments.filter(a => 
+                            a.workerId === worker.id && 
+                            a.date.toISOString().split('T')[0] === dateStr
+                        );
+                        
+                        // 割り当てられたタスクを表示
+                        cellAssignments.forEach(assignment => {
+                            const task = appState.tasks.find(t => t.id === assignment.taskId);
+                            const house = appState.houses.find(h => h.id === assignment.houseId);
+                            
+                            const taskElement = document.createElement('div');
+                            taskElement.className = 'assigned-task';
+                            taskElement.setAttribute('data-task-id', task.id);
+                            taskElement.setAttribute('data-house-id', house.id);
+                            taskElement.textContent = `${house.name}: ${task.name}`;
+                            cell.appendChild(taskElement);
+                        });
+                        
+                        grid.appendChild(cell);
+                    });
+                });
+                
+                elements.workerSchedule.appendChild(grid);
+            }
+
+            // 家視点のスケジュール表示
+            function renderHouseView() {
+                elements.houseSchedule.innerHTML = '';
+                
+                // サイドバーを作成
+                const sidebar = document.createElement('div');
+                sidebar.className = 'schedule-sidebar';
+                sidebar.innerHTML = '<h3>家と工程</h3>';
+                
+                // 各家を表示
+                appState.houses.forEach(house => {
+                    const houseElement = document.createElement('div');
+                    houseElement.className = 'schedule-item';
+                    houseElement.textContent = house.name;
+                    sidebar.appendChild(houseElement);
+                });
+                
+                elements.houseSchedule.appendChild(sidebar);
+                
+                // グリッドを作成
+                const grid = document.createElement('div');
+                grid.className = 'schedule-grid';
+                
+                // 日付範囲を計算
+                const dateRange = getDateRange();
+                
+                // 各家の行を作成
+                appState.houses.forEach(house => {
+                    dateRange.forEach(date => {
+                        // 各日のセルを作成
+                        const dateStr = date.toISOString().split('T')[0];
+                        const cell = document.createElement('div');
+                        cell.className = 'grid-cell';
+                        cell.setAttribute('data-house-id', house.id);
+                        cell.setAttribute('data-date', dateStr);
+                        
+                        // このセルに割り当てられたタスクを見つける
+                        const cellAssignments = appState.assignments.filter(a => 
+                            a.houseId === house.id && 
+                            a.date.toISOString().split('T')[0] === dateStr
+                        );
+                        
+                        // 割り当てられたタスクを表示
+                        cellAssignments.forEach(assignment => {
+                            const task = appState.tasks.find(t => t.id === assignment.taskId);
+                            const worker = appState.workers.find(w => w.id === assignment.workerId);
+                            
+                            const taskElement = document.createElement('div');
+                            taskElement.className = 'assigned-task';
+                            taskElement.setAttribute('data-task-id', task.id);
+                            taskElement.setAttribute('data-worker-id', worker.id);
+                            taskElement.textContent = `${task.name}: ${worker.name}`;
+                            cell.appendChild(taskElement);
+                        });
+                        
+                        grid.appendChild(cell);
+                    });
+                });
+                
+                elements.houseSchedule.appendChild(grid);
+            }
+
+            // 日付範囲を取得
+            function getDateRange() {
+                const dateRange = [];
+                let currentDate = new Date(appState.startDate);
+                
+                while (currentDate <= appState.endDate) {
+                    dateRange.push(new Date(currentDate));
+                    currentDate.setDate(currentDate.getDate() + 1);
+                }
+                
+                return dateRange;
+            }
+
+            // ドラッグアンドドロップの設定
+            function setupDragAndDrop() {
+                // 未割り当てタスクをドラッグ可能に
+                $('.schedule-item').draggable({
+                    helper: 'clone',
+                    revert: 'invalid',
+                    cursor: 'move',
+                    zIndex: 100
+                });
+                
+                // グリッドセルをドロップ対象に
+                $('.grid-cell').droppable({
+                    accept: '.schedule-item, .assigned-task',
+                    drop: function(event, ui) {
+                        const droppedElement = ui.draggable[0];
+                        const taskId = droppedElement.getAttribute('data-task-id');
+                        const houseId = droppedElement.getAttribute('data-house-id');
+                        const cell = event.target;
+                        const date = new Date(cell.getAttribute('data-date'));
+                        
+                        // 大工視点と家視点で処理を分ける
+                        if (appState.currentView === 'worker') {
+                            const workerId = cell.getAttribute('data-worker-id');
+                            
+                            // 既存の割り当てを削除（ドラッグされたタスクのみ）
+                            const sameDateAssignments = appState.assignments.filter(a => 
+                                a.taskId === taskId && 
+                                a.date.toISOString().split('T')[0] === date.toISOString().split('T')[0]
+                            );
+                            
+                            if (sameDateAssignments.length > 0) {
+                                // 既存の割り当てを削除
+                                appState.assignments = appState.assignments.filter(a => 
+                                    !(a.taskId === taskId && 
+                                      a.date.toISOString().split('T')[0] === date.toISOString().split('T')[0])
+                                );
+                            }
+                            
+                            // 新しい割り当てを追加
+                            appState.assignments.push({
+                                workerId: workerId,
+                                taskId: taskId,
+                                houseId: houseId,
+                                date: date
+                            });
+                        } else {
+                            // 家視点の場合
+                            const houseId = cell.getAttribute('data-house-id');
+                            
+                            // タスクのワーカーIDを取得（元の割り当てから）
+                            let workerId = droppedElement.getAttribute('data-worker-id');
+                            
+                            if (!workerId) {
+                                // 未割り当てタスクの場合は最初のワーカーを割り当て
+                                workerId = appState.workers[0].id;
+                            }
+                            
+                            // 既存の割り当てを削除（同じ日付、同じ家、同じタスク）
+                            appState.assignments = appState.assignments.filter(a => 
+                                !(a.houseId === houseId && 
+                                  a.taskId === taskId &&
+                                  a.date.toISOString().split('T')[0] === date.toISOString().split('T')[0])
+                            );
+                            
+                            // 新しい割り当てを追加
+                            appState.assignments.push({
+                                workerId: workerId,
+                                taskId: taskId,
+                                houseId: houseId,
+                                date: date
+                            });
+                        }
+                        
+                        // スケジュールを更新
+                        renderSchedule();
+                        updateSummary();
+                    }
+                });
+                
+                // 割り当て済みタスクもドラッグ可能に
+                $('.assigned-task').draggable({
+                    helper: 'clone',
+                    revert: 'invalid',
+                    cursor: 'move',
+                    zIndex: 100
+                });
+            }
+
+            // 表示切り替え
+            function switchView(view) {
+                appState.currentView = view;
+                
+                if (view === 'worker') {
+                    elements.workerViewBtn.classList.add('active');
+                    elements.houseViewBtn.elements.workerViewBtn.classList.add('active');
+                    elements.houseViewBtn.classList.remove('active');
+                    elements.workerView.classList.remove('hidden');
+                    elements.houseView.classList.add('hidden');
+                } else {
+                    elements.workerViewBtn.classList.remove('active');
+                    elements.houseViewBtn.classList.add('active');
+                    elements.workerView.classList.add('hidden');
+                    elements.houseView.classList.remove('hidden');
+                }
+            }
+
+            // 概要の更新
+            function updateSummary() {
+                // 稼働率を計算
+                const totalDays = getDateRange().length * appState.workers.length;
+                const assignedDays = appState.assignments.length;
+                const utilization = Math.round((assignedDays / totalDays) * 100);
+                
+                elements.workerUtilization.textContent = `${utilization}%`;
+                
+                // 効率スコアを更新
+                updateEfficiencyMeter(utilization);
+                
+                // 完成予定を計算
+                calculateCompletionDates();
+            }
+
+            // 効率メーターの更新
+            function updateEfficiencyMeter(percentage) {
+                elements.efficiencyValue.style.width = `${percentage}%`;
+                
+                // 効率に応じて色を変更
+                if (percentage < 30) {
+                    elements.efficiencyValue.style.backgroundColor = '#ff6b6b'; // 赤
+                } else if (percentage < 60) {
+                    elements.efficiencyValue.style.backgroundColor = '#ffb347'; // オレンジ
+                } else {
+                    elements.efficiencyValue.style.backgroundColor = '#4a6da7'; // 青
+                }
+            }
+
+            // 完成予定日の計算
+            function calculateCompletionDates() {
+                const completionDates = {};
+                
+                // 各家の最後のタスクを見つける
+                appState.houses.forEach(house => {
+                    const houseTasks = appState.tasks.filter(t => t.houseId === house.id);
+                    
+                    // 依存関係に基づく最終タスクを特定
+                    const lastTasks = houseTasks.filter(task => {
+                        return !houseTasks.some(t => t.dependencies.includes(task.id));
+                    });
+                    
+                    // 最終タスクの最後の割り当て日を見つける
+                    let latestDate = null;
+                    
+                    lastTasks.forEach(task => {
+                        const taskAssignments = appState.assignments.filter(a => a.taskId === task.id);
+                        
+                        if (taskAssignments.length > 0) {
+                            const lastAssignment = taskAssignments.reduce((latest, current) => {
+                                return current.date > latest.date ? current : latest;
+                            });
+                            
+                            if (!latestDate || lastAssignment.date > latestDate) {
+                                latestDate = new Date(lastAssignment.date);
+                            }
+                        }
+                    });
+                    
+                    if (latestDate) {
+                        // 完成日は最後のタスクの最後の日 + 1日
+                        const completionDate = new Date(latestDate);
+                        completionDate.setDate(latestDate.getDate() + 1);
+                        completionDates[house.id] = completionDate;
+                    }
+                });
+                
+                // 完成予定日を表示
+                const completionList = document.createElement('div');
+                
+                // 全体の完成予定
+                let overallCompletion = null;
+                Object.values(completionDates).forEach(date => {
+                    if (!overallCompletion || date > overallCompletion) {
+                        overallCompletion = new Date(date);
+                    }
+                });
+                
+                const summaryContent = document.getElementById('summary-content');
+                
+                // 既存の完成予定テキストを更新
+                const completionParagraph = summaryContent.querySelector('p:nth-child(2)');
+                if (overallCompletion) {
+                    completionParagraph.textContent = `完成予定: ${overallCompletion.toLocaleDateString('ja-JP')}`;
+                } else {
+                    completionParagraph.textContent = `完成予定: 未定`;
+                }
+                
+                // 各家の完成予定を追加
+                const houseCompletions = document.createElement('div');
+                houseCompletions.innerHTML = '<p>各家の完成予定:</p>';
+                
+                appState.houses.forEach(house => {
+                    const date = completionDates[house.id];
+                    const dateText = date ? date.toLocaleDateString('ja-JP') : '未定';
+                    const p = document.createElement('p');
+                    p.textContent = `${house.name}: ${dateText}`;
+                    houseCompletions.appendChild(p);
+                });
+                
+                // 既存の完成予定リストを置き換え
+                const existingList = summaryContent.querySelector('.house-completions');
+                if (existingList) {
+                    summaryContent.removeChild(existingList);
+                }
+                
+                houseCompletions.className = 'house-completions';
+                summaryContent.appendChild(houseCompletions);
+            }
+
+            // アプリの状態を保存
+            function saveAppState() {
+                const state = JSON.stringify(appState, (key, value) => {
+                    // 日付オブジェクトを文字列に変換
+                    if (value instanceof Date) {
+                        return { type: 'date', value: value.toISOString() };
+                    }
+                    return value;
+                });
+                
+                // ローカルストレージに保存
+                localStorage.setItem('constructionScheduler', state);
+                alert('スケジュールを保存しました');
+            }
+
+            // アプリの状態を読み込み
+            function loadAppState() {
+                const savedState = localStorage.getItem('constructionScheduler');
+                
+                if (savedState) {
+                    // 保存された状態を復元
+                    const parsed = JSON.parse(savedState, (key, value) => {
+                        // 日付文字列をDateオブジェクトに変換
+                        if (value && typeof value === 'object' && value.type === 'date') {
+                            return new Date(value.value);
+                        }
+                        return value;
+                    });
+                    
+                    // アプリの状態を更新
+                    Object.assign(appState, parsed);
+                    
+                    // UI要素を更新
+                    elements.startDate.value = appState.startDate.toISOString().split('T')[0];
+                    elements.endDate.value = appState.endDate.toISOString().split('T')[0];
+                    elements.workerCount.value = appState.workers.length;
+                    elements.houseCount.value = appState.houses.length;
+                    
+                    // スケジュールを表示
+                    renderSchedule();
+                    updateSummary();
+                    
+                    alert('スケジュールを読み込みました');
+                } else {
+                    alert('保存されたスケジュールが見つかりません');
+                }
+            }
+
+            // CSVをインポート
+            function importCsv(event) {
+                const file = event.target.files[0];
+                
+                if (file) {
+                    const reader = new FileReader();
+                    
+                    reader.onload = function(e) {
+                        const contents = e.target.result;
+                        
+                        // CSVデータをパース
+                        Papa.parse(contents, {
+                            header: true,
+                            complete: function(results) {
+                                processImportedData(results.data);
+                            }
+                        });
+                    };
+                    
+                    reader.readAsText(file);
+                }
+            }
+
+            // インポートされたデータを処理
+            function processImportedData(data) {
+                if (data.length === 0) {
+                    alert('CSVファイルにデータがありません');
+                    return;
+                }
+                
+                try {
+                    // 1行目を確認してフォーマットを判断
+                    const firstRow = data[0];
+                    
+                    if ('worker' in firstRow && 'task' in firstRow && 'house' in firstRow && 'date' in firstRow) {
+                        // 割り当てデータとして処理
+                        importAssignments(data);
+                    } else if ('id' in firstRow && 'name' in firstRow) {
+                        // マスターデータとして処理
+                        if ('skills' in firstRow) {
+                            importWorkers(data);
+                        } else if ('status' in firstRow) {
+                            importHouses(data);
+                        } else {
+                            importTasks(data);
+                        }
+                    } else {
+                        alert('CSVのフォーマットが認識できません');
+                    }
+                } catch (error) {
+                    console.error('インポートエラー:', error);
+                    alert('データのインポート中にエラーが発生しました');
+                }
+            }
+
+            // ワーカーデータをインポート
+            function importWorkers(data) {
+                appState.workers = data.map(row => ({
+                    id: row.id || `worker-${Math.random().toString(36).substr(2, 9)}`,
+                    name: row.name,
+                    skills: row.skills ? row.skills.split(',').map(s => s.trim()) : ['general']
+                }));
+                
+                elements.workerCount.value = appState.workers.length;
+                alert(`${appState.workers.length}人の大工データをインポートしました`);
+                
+                renderSchedule();
+                updateSummary();
+            }
+
+            // 家データをインポート
+            function importHouses(data) {
+                appState.houses = data.map(row => ({
+                    id: row.id || `house-${Math.random().toString(36).substr(2, 9)}`,
+                    name: row.name,
+                    status: row.status || 'in-progress'
+                }));
+                
+                elements.houseCount.value = appState.houses.length;
+                alert(`${appState.houses.length}件の家データをインポートしました`);
+                
+                renderSchedule();
+                updateSummary();
+            }
+
+            // タスクデータをインポート
+            function importTasks(data) {
+                appState.tasks = data.map(row => ({
+                    id: row.id || `task-${Math.random().toString(36).substr(2, 9)}`,
+                    houseId: row.houseId,
+                    name: row.name,
+                    duration: parseInt(row.duration) || 1,
+                    requiredSkills: row.requiredSkills ? row.requiredSkills.split(',').map(s => s.trim()) : ['general'],
+                    dependencies: row.dependencies ? row.dependencies.split(',').map(s => s.trim()) : []
+                }));
+                
+                alert(`${appState.tasks.length}件のタスクデータをインポートしました`);
+                
+                renderSchedule();
+                updateSummary();
+            }
+
+            // 割り当てデータをインポート
+            function importAssignments(data) {
+                appState.assignments = data.map(row => ({
+                    workerId: row.worker,
+                    taskId: row.task,
+                    houseId: row.house,
+                    date: new Date(row.date)
+                }));
+                
+                // 開始日と終了日を更新
+                const dates = appState.assignments.map(a => a.date);
+                if (dates.length > 0) {
+                    appState.startDate = new Date(Math.min(...dates));
+                    appState.endDate = new Date(Math.max(...dates));
+                    
+                    elements.startDate.value = appState.startDate.toISOString().split('T')[0];
+                    elements.endDate.value = appState.endDate.toISOString().split('T')[0];
+                }
+                
+                alert(`${appState.assignments.length}件の割り当てデータをインポートしました`);
+                
+                renderSchedule();
+                updateSummary();
+            }
+        });
+    </script>
+</body>
+</html>
